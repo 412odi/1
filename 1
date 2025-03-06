@@ -1,0 +1,119 @@
+Установите yt-dlp (или youtube-dl)
+Зарегистрируйтесь в Spotify Developer Dashboard и создайте приложение, чтобы получить client_id и client_secret
+Установите библиотеку libcurl для работы с HTTP-запросами в C++: sudo apt install libcurl4-openssl-dev
+
+#include <iostream>
+#include <string>
+#include <cstdlib>
+#include <curl/curl.h>
+#include <json/json.h>
+
+// Настройки Spotify API
+const std::string CLIENT_ID = "ваш_client_id";
+const std::string CLIENT_SECRET = "ваш_client_secret";
+const std::string REDIRECT_URI = "http://localhost:8888/callback";
+
+// Функция для выполнения HTTP-запроса
+std::string performHttpRequest(const std::string& url, const std::string& postData = "") {
+    CURL* curl = curl_easy_init();
+    std::string response;
+
+    if (curl) {
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        if (!postData.empty()) {
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postData.c_str());
+        }
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, [](void* ptr, size_t size, size_t nmemb, std::string* data) {
+            data->append((char*)ptr, size * nmemb);
+            return size * nmemb;
+        });
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+        CURLcode res = curl_easy_perform(curl);
+        if (res != CURLE_OK) {
+            std::cerr << "Ошибка при выполнении запроса: " << curl_easy_strerror(res) << std::endl;
+        }
+        curl_easy_cleanup(curl);
+    }
+
+    return response;
+}
+
+// Получение токена доступа Spotify
+std::string getSpotifyAccessToken() {
+    std::string url = "https://accounts.spotify.com/api/token";
+    std::string postData = "grant_type=client_credentials&client_id=" + CLIENT_ID + "&client_secret=" + CLIENT_SECRET;
+
+    std::string response = performHttpRequest(url, postData);
+
+    Json::Value root;
+    Json::CharReaderBuilder reader;
+    std::string errs;
+    std::istringstream s(response);
+    Json::parseFromStream(reader, s, &root, &errs);
+
+    return root["access_token"].asString();
+}
+
+// Получение списка треков из плейлиста
+void getPlaylistTracks(const std::string& accessToken, const std::string& playlistId) {
+    std::string url = "https://api.spotify.com/v1/playlists/" + playlistId + "/tracks";
+    std::string authHeader = "Authorization: Bearer " + accessToken;
+
+    CURL* curl = curl_easy_init();
+    if (curl) {
+        struct curl_slist* headers = nullptr;
+        headers = curl_slist_append(headers, authHeader.c_str());
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+
+        std::string response;
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, [](void* ptr, size_t size, size_t nmemb, std::string* data) {
+            data->append((char*)ptr, size * nmemb);
+            return size * nmemb;
+        });
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+
+        CURLcode res = curl_easy_perform(curl);
+        if (res != CURLE_OK) {
+            std::cerr << "Ошибка при выполнении запроса: " << curl_easy_strerror(res) << std::endl;
+        } else {
+            Json::Value root;
+            Json::CharReaderBuilder reader;
+            std::string errs;
+            std::istringstream s(response);
+            Json::parseFromStream(reader, s, &root, &errs);
+
+            for (const auto& item : root["items"]) {
+                std::string trackName = item["track"]["name"].asString();
+                std::string artistName = item["track"]["artists"][0]["name"].asString();
+                std::cout << "Найден трек: " << trackName << " - " << artistName << std::endl;
+
+                // Загрузка трека с YouTube
+                std::string command = "yt-dlp -x --audio-format mp3 -o 'downloads/%(title)s.%(ext)s' 'ytsearch:" + trackName + " " + artistName + " audio'";
+                std::system(command.c_str());
+            }
+        }
+
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+    }
+}
+
+int main() {
+    // Получение токена доступа
+    std::string accessToken = getSpotifyAccessToken();
+    if (accessToken.empty()) {
+        std::cerr << "Не удалось получить токен доступа." << std::endl;
+        return 1;
+    }
+
+    // Получение треков из плейлиста
+    std::string playlistId = "ваш_id_плейлиста"; // Замените на ID вашего плейлиста
+    getPlaylistTracks(accessToken, playlistId);
+
+    return 0;
+}
+
+Сохраните код в файл 
+Скомпилируйте программу: g++ -o spotify_downloader spotify_downloader.cpp -lcurl -ljsoncpp
+Запуск: ./spotify_downloader
