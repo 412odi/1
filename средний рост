@@ -1,0 +1,28 @@
+#include <iostream>
+using namespace std;
+int main() {
+    setlocale(LC_ALL, "rus"); 
+    int N; 
+    double vis, ovis = 0.0; 
+    int count = 0; 
+    cout << "Введите количество учащихся: ";
+    cin >> N;
+    if (N <= 0) {
+        cout << "Ошибка: количество учащихся должно быть больше 0." << endl;
+        return 1; 
+    }
+    while (count < N) {
+        cout << "Введите рост учащегося " << count + 1 << ": ";
+        cin >> vis;
+        if (vis <= 0) {
+            cout << "Ошибка: рост должен быть положительным числом." << endl;
+            continue; 
+        }
+
+        ovis += vis; 
+        count++; 
+    }
+    double avis = ovis / N;
+    cout << "Средний рост учащихся: " << avis << " см" << endl;
+    return 0;
+}
